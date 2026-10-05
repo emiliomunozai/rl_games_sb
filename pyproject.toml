@@ -1,0 +1,44 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "rl_games_sb"
+version = "0.1.0"
+description = "RL Games, built on Stable-Baselines3."
+readme = "README.md"
+license = { text = "Apache-2.0" }
+requires-python = ">=3.11 , <3.12"
+
+dependencies = [
+    "gym-anytrading>=2.0.0",
+    "gymnasium[atari,box2d,other]>=1.2.3",
+    "mlflow>=3.16.1",
+    "optuna>=5.0.0",
+    "pyyaml>=6.0.3",
+    "ruff>=0.15.5",
+    "stable-baselines3>=2.7",
+    "torch>=2.14.1",
+]
+
+[project.scripts]
+rlgames-sb = "rl_games_sb.cli:main"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/rl_games_sb"]
+
+[dependency-groups]
+dev = [
+    "ipykernel>=7.4.0",
+]
+
+# CUDA build of PyTorch on Linux/Windows (PyPI's Windows wheel is CPU-only).
+# cu130 needs an NVIDIA driver supporting CUDA 13.0+; it also runs on machines
+# without a GPU, falling back to CPU.
+[tool.uv.sources]
+torch = [{ index = "pytorch-cu130", marker = "sys_platform == 'linux' or sys_platform == 'win32'" }]
+
+[[tool.uv.index]]
+name = "pytorch-cu130"
+url = "https://download.pytorch.org/whl/cu130"
+explicit = true

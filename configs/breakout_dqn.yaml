@@ -1,0 +1,40 @@
+# DQN on Atari Breakout.
+#   rlgames-sb train --config configs/breakout_dqn.yaml
+#   rlgames-sb tune  --config configs/breakout_dqn.yaml
+#
+# Hyperparameters adapted from RL Baselines3 Zoo's Atari DQN. The Zoo trains
+# for 10M timesteps; expect slow progress for the first few million.
+
+experiment: breakout
+env: ALE/Breakout-v5
+algo: dqn
+timesteps: 2_000_000
+eval_episodes: 10
+
+hyperparams:
+  learning_rate: 1.0e-4
+  buffer_size: 100_000
+  # Store each frame stack once instead of twice: ~2.8 GB of RAM for 100k
+  # transitions instead of ~5.6 GB. Requires handle_timeout_termination off.
+  optimize_memory_usage: true
+  replay_buffer_kwargs:
+    handle_timeout_termination: false
+  learning_starts: 100_000
+  batch_size: 32
+  train_freq: 4
+  gradient_steps: 1
+  target_update_interval: 1_000
+  exploration_fraction: 0.1
+  exploration_final_eps: 0.01
+
+tune:
+  trials: 10
+  timesteps: 200_000            # ~5 min per trial on a GPU
+  hyperparams:                  # short trials: start learning sooner
+    learning_starts: 10_000
+    buffer_size: 50_000
+  search_space:
+    learning_rate: {type: float, low: 3.0e-5, high: 1.0e-3, log: true}
+    exploration_fraction: {type: float, low: 0.05, high: 0.3}
+    target_update_interval: {type: categorical, choices: [1000, 5000, 10000]}
+    batch_size: {type: categorical, choices: [32, 64]}

@@ -1,0 +1,32 @@
+# PPO on LunarLander: quick to train and to tune, so a good first experiment.
+#   rlgames-sb train --config configs/lunarlander_ppo.yaml
+#   rlgames-sb tune  --config configs/lunarlander_ppo.yaml
+#
+# Hyperparameters adapted from RL Baselines3 Zoo (which uses 16 parallel envs;
+# this project trains on one). A mean reward of 200+ counts as solved.
+
+experiment: lunarlander
+env: LunarLander-v3
+algo: ppo
+timesteps: 1_000_000
+eval_episodes: 10
+
+hyperparams:
+  n_steps: 1024
+  batch_size: 64
+  n_epochs: 4
+  gamma: 0.999
+  gae_lambda: 0.98
+  ent_coef: 0.01
+  # MLP policies are faster on the CPU; the GPU pays off for CNNs (Atari).
+  device: cpu
+
+tune:
+  trials: 20
+  timesteps: 200_000
+  search_space:
+    learning_rate: {type: float, low: 1.0e-5, high: 1.0e-3, log: true}
+    n_steps: {type: categorical, choices: [512, 1024, 2048]}
+    gamma: {type: categorical, choices: [0.99, 0.995, 0.999]}
+    ent_coef: {type: float, low: 1.0e-4, high: 0.05, log: true}
+    gae_lambda: {type: float, low: 0.9, high: 0.99}
