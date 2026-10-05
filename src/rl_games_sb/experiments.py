@@ -22,13 +22,14 @@ def train(cfg: config.Config) -> Path:
     """Train for cfg.timesteps, save, evaluate, and log it all to MLflow."""
     path = registry.save_path(cfg.algo, cfg.env)
     resumed = path.exists()
-    if resumed and cfg.hyperparams:
+    if resumed and cfg.hyperparams.keys() - {"device"}:
         print(
             f"Resuming {path}: it keeps the hyperparameters it was saved with, "
             f"so the config's are ignored. Run 'rlgames-sb delete {cfg.algo} "
             f"--env {cfg.env}' to start fresh."
         )
     model = registry.load_or_create(cfg.algo, cfg.env, **cfg.hyperparams)
+    print(f"Device: {registry.describe_device(model.device)}")
 
     mlflow.set_experiment(cfg.experiment)
     with mlflow.start_run(run_name=f"{cfg.algo}-{cfg.env}"):
@@ -77,6 +78,7 @@ def tune(
     timesteps = timesteps or int(cfg.tune.get("timesteps", cfg.timesteps))
     eval_episodes = cfg.eval_episodes or 5
     base = {**cfg.hyperparams, **(cfg.tune.get("hyperparams") or {})}
+    print(f"Device: {registry.describe_device(base.get('device', 'auto'))}")
 
     mlflow.set_experiment(cfg.experiment)
     with mlflow.start_run(run_name=f"tune-{cfg.algo}-{cfg.env}"):

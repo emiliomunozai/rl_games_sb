@@ -68,6 +68,18 @@ def cmd_inspect(args: argparse.Namespace) -> None:
     env.close()
 
 
+def _hyperparams(args: argparse.Namespace) -> dict:
+    """--device as a constructor kwarg, when given."""
+    return {"device": args.device} if args.device else {}
+
+
+def _load(args: argparse.Namespace):
+    """Load the saved agent on --device (default: auto) and print the device."""
+    model = registry.load(args.agent, args.env, device=args.device or "auto")
+    print(f"Device: {registry.describe_device(model.device)}")
+    return model
+
+
 def cmd_init(args: argparse.Namespace) -> None:
     path = registry.save_path(args.agent, args.env)
 
@@ -75,8 +87,10 @@ def cmd_init(args: argparse.Namespace) -> None:
         print(f"Save already exists at {path}. Run 'rlgames-sb delete {args.agent}' first.")
         return
 
-    registry.create(args.agent, args.env).save(path)
+    model = registry.create(args.agent, args.env, **_hyperparams(args))
+    model.save(path)
     print(f"Initialized {args.agent} agent at {path}.")
+    print(f"Device: {registry.describe_device(model.device)}")
 
 
 def cmd_train(args: argparse.Namespace) -> None:
@@ -84,6 +98,7 @@ def cmd_train(args: argparse.Namespace) -> None:
         cfg = config.load(args.config)
         if args.timesteps:
             cfg.timesteps = args.timesteps
+        cfg.hyperparams.update(_hyperparams(args))
     elif args.agent:
         cfg = config.Config(
             env=args.env,
@@ -91,6 +106,7 @@ def cmd_train(args: argparse.Namespace) -> None:
             timesteps=args.timesteps or 100_000,
             experiment=args.env,
             eval_episodes=0,
+            hyperparams=_hyperparams(args),
         )
     else:
         raise SystemExit("train: give an agent (e.g. 'train dqn') or --config FILE")
@@ -101,6 +117,7 @@ def cmd_train(args: argparse.Namespace) -> None:
 
 def cmd_tune(args: argparse.Namespace) -> None:
     cfg = config.load(args.config)
+    cfg.hyperparams.update(_hyperparams(args))
     study = experiments.tune(cfg, n_trials=args.trials, timesteps=args.timesteps)
 
     print(f"\nBest mean reward: {study.best_value:.2f} (trial {study.best_trial.number})")
@@ -123,7 +140,7 @@ def cmd_load(args: argparse.Namespace) -> None:
         print(f"No save found at {path}")
         return
 
-    model = registry.load(args.agent, args.env)
+    model = registry.load(args.agent, args.env, device=args.device or "auto")
     params = sum(p.numel() for p in model.policy.parameters())
     print(
         f"{type(model).__name__} agent for {args.env}\n"
@@ -131,7 +148,7 @@ def cmd_load(args: argparse.Namespace) -> None:
         f"  Policy            : {type(model.policy).__name__}\n"
         f"  Network params    : {params:,}\n"
         f"  LR / Gamma        : {model.learning_rate} / {model.gamma}\n"
-        f"  Device            : {model.device}"
+        f"  Device            : {registry.describe_device(model.device)}"
     )
 
     if args.eval:
@@ -146,7 +163,7 @@ def cmd_sim(args: argparse.Namespace) -> None:
         print(f"No save found at {path}")
         return
 
-    model = registry.load(args.agent, args.env)
+    model = _load(args)
     env = envs.make(args.env)
 
     all_rewards: list[float] = []
@@ -203,7 +220,7 @@ def cmd_render(args: argparse.Namespace) -> None:
         print(f"No save found at {path}")
         return
 
-    model = registry.load(args.agent, args.env)
+    model = _load(args)
     env = envs.make(args.env, render_mode="human")
 
     rewards, _ = evaluate_policy(
@@ -245,6 +262,14 @@ def _build_parser() -> argparse.ArgumentParser:
             help=f"Gymnasium env ID, e.g. ALE/Pong-v5 (default: {ENV_ID})",
         )
 
+    def add_device_arg(p: argparse.ArgumentParser) -> None:
+        p.add_argument(
+            "--device",
+            choices=("auto", "cpu", "cuda"),
+            default=None,
+            help="Torch device (default: the config's, else auto = GPU if available)",
+        )
+
     # version
     p = sub.add_parser("version", help="Show the package version")
     p.set_defaults(func=cmd_version)
@@ -267,6 +292,7 @@ def _build_parser() -> argparse.ArgumentParser:
     p = sub.add_parser("init", help="Initialize a new (untrained) agent and save it")
     p.add_argument("agent", choices=ALGO_CHOICES)
     add_env_arg(p)
+    add_device_arg(p)
     p.set_defaults(func=cmd_init)
 
     # train
@@ -284,6 +310,7 @@ def _build_parser() -> argparse.ArgumentParser:
         help="Training timesteps (default: the config's, or 100k)",
     )
     add_env_arg(p)
+    add_device_arg(p)
     p.set_defaults(func=cmd_train)
 
     # tune
@@ -295,6 +322,7 @@ def _build_parser() -> argparse.ArgumentParser:
     p.add_argument(
         "--timesteps", type=int, default=None, help="Timesteps per trial (default: the config's)"
     )
+    add_device_arg(p)
     p.set_defaults(func=cmd_tune)
 
     # delete
@@ -308,6 +336,7 @@ def _build_parser() -> argparse.ArgumentParser:
     p.add_argument("agent", choices=ALGO_CHOICES)
     p.add_argument("--eval", action="store_true", help="Run a quick 10-episode evaluation")
     add_env_arg(p)
+    add_device_arg(p)
     p.set_defaults(func=cmd_load)
 
     # sim
@@ -317,6 +346,7 @@ def _build_parser() -> argparse.ArgumentParser:
     p.add_argument("--steps", type=int, default=None, help="Limit output to the first N steps per episode (default: show all)")
     p.add_argument("--verbose", action="store_true", help="Print every step with full state vectors")
     add_env_arg(p)
+    add_device_arg(p)
     p.set_defaults(func=cmd_sim)
 
     # render
@@ -324,6 +354,7 @@ def _build_parser() -> argparse.ArgumentParser:
     p.add_argument("agent", choices=ALGO_CHOICES)
     p.add_argument("--episodes", type=int, default=1, help="Number of episodes to render (default: 1)")
     add_env_arg(p)
+    add_device_arg(p)
     p.set_defaults(func=cmd_render)
 
     return parser

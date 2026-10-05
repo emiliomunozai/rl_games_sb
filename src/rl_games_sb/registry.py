@@ -8,11 +8,14 @@ Contents:
   - create()        : build a fresh, untrained model
   - load()          : load a saved model
   - load_or_create(): load if a save exists, else create
+  - describe_device(): a device as printed by the CLI, e.g. "cuda (RTX 5070 Ti)"
 """
 from pathlib import Path
 
+import torch
 from stable_baselines3 import A2C, DQN, PPO
 from stable_baselines3.common.base_class import BaseAlgorithm
+from stable_baselines3.common.utils import get_device
 
 from rl_games_sb import envs
 
@@ -45,16 +48,28 @@ def create(algo: str, env_id: str, **hyperparams) -> BaseAlgorithm:
     return ALGOS[algo]("MlpPolicy", env, **{"verbose": 1, **hyperparams})
 
 
-def load(algo: str, env_id: str) -> BaseAlgorithm:
-    """Load the saved model for this (algorithm, env) pair."""
-    return ALGOS[algo].load(save_path(algo, env_id), env=envs.make(env_id))
+def load(algo: str, env_id: str, device: str = "auto") -> BaseAlgorithm:
+    """Load the saved model for this (algorithm, env) pair.
+
+    "auto" means the GPU if there is one, whatever the model trained on.
+    """
+    return ALGOS[algo].load(save_path(algo, env_id), env=envs.make(env_id), device=device)
 
 
 def load_or_create(algo: str, env_id: str, **hyperparams) -> BaseAlgorithm:
     """Resume from a save if there is one, otherwise start fresh.
 
-    A resumed model keeps the hyperparameters it was saved with.
+    A resumed model keeps the hyperparameters it was saved with, except
+    `device`, which applies either way.
     """
     if save_path(algo, env_id).exists():
-        return load(algo, env_id)
+        return load(algo, env_id, device=hyperparams.get("device", "auto"))
     return create(algo, env_id, **hyperparams)
+
+
+def describe_device(device: torch.device | str) -> str:
+    """'cuda (NVIDIA GeForce RTX 5070 Ti)' or 'cpu'. Resolves "auto"."""
+    device = get_device(device)
+    if device.type == "cuda":
+        return f"{device} ({torch.cuda.get_device_name(device)})"
+    return str(device)

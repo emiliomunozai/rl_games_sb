@@ -36,9 +36,18 @@ without a GPU. Check it with:
 uv run python -c "import torch; print(torch.cuda.is_available(), torch.cuda.get_device_name(0))"
 ```
 
-SB3 picks the GPU automatically (`Using cuda device`). The GPU pays off for
-CNN policies (Atari). Small MLP policies usually run faster on the CPU, so
-`configs/lunarlander_ppo.yaml` sets `device: cpu`.
+Every command that builds or loads a model prints its device, e.g.
+`Device: cuda (NVIDIA GeForce RTX 5070 Ti)`. By default it is the GPU if there
+is one. `--device cpu` or `--device cuda` overrides it, including a config's
+`device:`:
+
+```bash
+rlgames-sb train --config configs/lunarlander_ppo.yaml --device cuda
+rlgames-sb sim   ppo --env LunarLander-v3 --device cpu
+```
+
+The GPU pays off for CNN policies (Atari). Small MLP policies usually train
+faster on the CPU, so `configs/lunarlander_ppo.yaml` sets `device: cpu`.
 
 ## CLI usage
 
