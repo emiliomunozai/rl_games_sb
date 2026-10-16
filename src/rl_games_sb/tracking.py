@@ -29,11 +29,17 @@ _PARAM_NAMES = (
 
 
 class MLflowOutputFormat(KVWriter):
-    """Numeric values SB3 logs (rewards, losses, fps, ...) become MLflow metrics."""
+    """Numeric values SB3 logs (rewards, losses, fps, ...) become MLflow metrics.
+
+    `prefix` keeps runs that share one MLflow run apart, e.g. "seed1/".
+    """
+
+    def __init__(self, prefix: str = ""):
+        self.prefix = prefix
 
     def write(self, key_values: dict[str, Any], key_excluded: dict, step: int = 0) -> None:
         metrics = {
-            key: float(value)
+            self.prefix + key: float(value)
             for key, value in key_values.items()
             if isinstance(value, (int, float, np.number)) and not isinstance(value, bool)
         }
@@ -41,8 +47,8 @@ class MLflowOutputFormat(KVWriter):
             mlflow.log_metrics(metrics, step=step)
 
 
-def attach(model: BaseAlgorithm, *, stdout: bool = True) -> None:
-    formats: list[KVWriter] = [MLflowOutputFormat()]
+def attach(model: BaseAlgorithm, *, stdout: bool = True, prefix: str = "") -> None:
+    formats: list[KVWriter] = [MLflowOutputFormat(prefix)]
     if stdout:
         formats.append(HumanOutputFormat(sys.stdout))
     model.set_logger(Logger(folder=None, output_formats=formats))

@@ -43,9 +43,9 @@ def create(algo: str, env_id: str, **hyperparams) -> BaseAlgorithm:
     """
     env = envs.make(env_id)
     if len(env.observation_space.shape) == 3:
-        kwargs = {"verbose": 1, **IMAGE_KWARGS.get(algo, {}), **hyperparams}
+        kwargs = {"verbose": 0, **IMAGE_KWARGS.get(algo, {}), **hyperparams}
         return ALGOS[algo]("CnnPolicy", env, **kwargs)
-    return ALGOS[algo]("MlpPolicy", env, **{"verbose": 1, **hyperparams})
+    return ALGOS[algo]("MlpPolicy", env, **{"verbose": 0, **hyperparams})
 
 
 def load(algo: str, env_id: str, device: str = "auto") -> BaseAlgorithm:

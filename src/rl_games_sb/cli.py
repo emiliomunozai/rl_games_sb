@@ -118,11 +118,15 @@ def cmd_train(args: argparse.Namespace) -> None:
 def cmd_tune(args: argparse.Namespace) -> None:
     cfg = config.load(args.config)
     cfg.hyperparams.update(_hyperparams(args))
-    study = experiments.tune(cfg, n_trials=args.trials, timesteps=args.timesteps)
+    if args.seeds:
+        cfg.tune["seeds"] = args.seeds
+    study, tuned = experiments.tune(cfg, n_trials=args.trials, timesteps=args.timesteps)
 
     print(f"\nBest mean reward: {study.best_value:.2f} (trial {study.best_trial.number})")
-    print("Best hyperparameters, to paste under 'hyperparams:' in the config:\n")
-    print(yaml.safe_dump(study.best_params, sort_keys=False))
+    print("Best hyperparameters:\n")
+    print(yaml.safe_dump(config.rounded(study.best_params), sort_keys=False))
+    print(f"Saved to {tuned}. Train with them:")
+    print(f"  rlgames-sb train --config {tuned.as_posix()}")
 
 
 def cmd_delete(args: argparse.Namespace) -> None:
@@ -320,7 +324,10 @@ def _build_parser() -> argparse.ArgumentParser:
     p.add_argument("--config", type=str, required=True, help="Experiment YAML with a tune: section")
     p.add_argument("--trials", type=int, default=None, help="Number of trials (default: the config's)")
     p.add_argument(
-        "--timesteps", type=int, default=None, help="Timesteps per trial (default: the config's)"
+        "--timesteps", type=int, default=None, help="Timesteps per seed (default: the config's)"
+    )
+    p.add_argument(
+        "--seeds", type=int, default=None, help="Training runs per trial, averaged (default: the config's, or 2)"
     )
     add_device_arg(p)
     p.set_defaults(func=cmd_tune)

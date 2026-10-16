@@ -4,6 +4,8 @@ Contents:
   - Config        : a parsed experiment config
   - load()        : read a YAML config file
   - sample()      : draw hyperparameters from a config's search space (Optuna)
+  - rounded()     : round float hyperparameters to 3 significant digits
+  - save_tuned()  : write a config with the best hyperparameters a search found
 
 A config file looks like:
 
@@ -16,7 +18,11 @@ A config file looks like:
       learning_rate: 1.0e-4
     tune:                         # used by `rlgames-sb tune` only
       trials: 20
-      timesteps: 100_000          # per trial
+      timesteps: 100_000          # per seed, per trial
+      seeds: 2                    # training runs per trial, averaged
+      evals: 10                   # evaluations during each run
+      eval_episodes: 5            # episodes per evaluation
+      score_last: 3               # a run's score: mean of its last N evaluations
       hyperparams:                # overrides for the short trial runs
         learning_starts: 10_000
       search_space:
@@ -25,6 +31,7 @@ A config file looks like:
 """
 from __future__ import annotations
 
+import time
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
@@ -90,3 +97,38 @@ def sample(trial: optuna.Trial, search_space: dict[str, dict]) -> dict[str, Any]
         else:
             raise ValueError(f"search_space.{name}: unknown type {kind!r}")
     return params
+
+
+def rounded(params: dict[str, Any]) -> dict[str, Any]:
+    """0.0003014475979109081 -> 0.000301: more digits are noise, not precision."""
+    return {k: float(f"{v:.3g}") if isinstance(v, float) else v for k, v in params.items()}
+
+
+def save_tuned(cfg: Config, best: dict[str, Any], score: float, run_name: str) -> Path:
+    """Write cfg with `best` merged into its hyperparams, ready for `train --config`.
+
+    It goes next to the source config as "<name>_tuned.yaml" (overwriting the
+    previous one; every version is also kept in MLflow, on the tuning run).
+    """
+    stem = cfg.path.stem.removesuffix("_tuned") if cfg.path else f"{cfg.algo}_{cfg.env}"
+    folder = cfg.path.parent if cfg.path else Path("configs")
+    out = folder / f"{stem.replace('/', '_')}_tuned.yaml"
+
+    best = rounded(best)
+    raw = {
+        "experiment": cfg.experiment,
+        "env": cfg.env,
+        "algo": cfg.algo,
+        "timesteps": cfg.timesteps,
+        "eval_episodes": cfg.eval_episodes,
+        "hyperparams": {**cfg.hyperparams, **best},
+        "tune": cfg.tune,
+    }
+    header = (
+        f"# Written by `rlgames-sb tune` on {time.strftime('%Y-%m-%d')} (MLflow run {run_name}).\n"
+        f"# Best mean reward during tuning: {score:.1f}. Tuned values: {', '.join(best)}.\n"
+        f"#   rlgames-sb train --config {out.as_posix()}\n\n"
+    )
+    folder.mkdir(parents=True, exist_ok=True)
+    out.write_text(header + yaml.safe_dump(raw, sort_keys=False), encoding="utf-8")
+    return out

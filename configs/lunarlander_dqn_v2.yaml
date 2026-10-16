@@ -1,0 +1,50 @@
+# DQN on LunarLander, v2: a fresh run aimed at a steadier policy than v1.
+#   rlgames-sb delete dqn --env LunarLander-v3     # train resumes an existing save
+#   rlgames-sb train --config configs/lunarlander_dqn_v2.yaml
+#   rlgames-sb tune  --config configs/lunarlander_dqn_v2.yaml
+#
+# Changes from lunarlander_dqn.yaml, after its 600k-step run scored 232 +/- 76
+# but drifted down from ~205 to ~175 training reward over the last 50k steps:
+#   buffer_size 50k -> 150k        older experience stays in the buffer, so the
+#                                  agent forgets less of what it already learned
+#   learning_starts 0 -> 10k       fill the buffer with random play before learning
+#   exploration_final_eps 0.1 -> 0.05  fewer random actions once trained
+#   timesteps 200k -> 500k         one fresh run instead of resuming in chunks
+#   eval_episodes 10 -> 20         with a std of ~76, 10 episodes is a noisy score
+
+experiment: lunarlander
+env: LunarLander-v3
+algo: dqn
+timesteps: 500_000
+eval_episodes: 20
+
+hyperparams:
+  learning_rate: 6.3e-4
+  batch_size: 128
+  buffer_size: 150_000
+  learning_starts: 10_000
+  gamma: 0.99
+  target_update_interval: 250
+  train_freq: 4
+  gradient_steps: -1
+  exploration_fraction: 0.12
+  exploration_final_eps: 0.05
+  policy_kwargs:
+    net_arch: [256, 256]
+  # MLP policies are faster on the CPU; the GPU pays off for CNNs (Atari).
+  device: cpu
+
+tune:
+  trials: 30
+  timesteps: 100_000          # per seed
+  seeds: 2                    # training runs per trial, averaged
+  evals: 10                   # evaluations during each run
+  eval_episodes: 5            # episodes per evaluation
+  score_last: 3               # a run's score: mean of its last 3 evaluations
+  search_space:
+    learning_rate: {type: float, low: 1.0e-4, high: 1.0e-3, log: true}
+    batch_size: {type: categorical, choices: [64, 128, 256]}
+    target_update_interval: {type: categorical, choices: [250, 1000]}
+    exploration_fraction: {type: float, low: 0.05, high: 0.3}
+    exploration_final_eps: {type: float, low: 0.01, high: 0.1}
+    buffer_size: {type: categorical, choices: [50_000, 150_000]}
